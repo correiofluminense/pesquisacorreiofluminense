@@ -334,15 +334,8 @@ function exportXlsx(auto){
   if (!form || !countInterviews()) { if (!auto) toast('Ainda não há entrevistas para exportar.'); return; }
   const url = URL.createObjectURL(makeXlsx()), a = h('a',{href:url, download:fileName()});
   document.body.append(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 60000);
-  if (!auto) toast('Arquivo Excel salvo na pasta de downloads.');
+  if (!auto) toast('Arquivo Excel salvo na pasta Downloads. Para enviar, abra o app Arquivos e compartilhe por lá.');
 }
-async function shareXlsx(){
-  if (!form || !countInterviews()) { toast('Ainda não há entrevistas para enviar.'); return; }
-  const f = new File([makeXlsx()], fileName(), {type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
-  if (navigator.canShare && navigator.canShare({files:[f]})) { try { await navigator.share({files:[f], title:'Entrevistas'}); } catch (e) {} }
-  else { toast('Este navegador não compartilha arquivos; use Exportar Excel.'); }
-}
-
 /* ================= Configurações ================= */
 function settings(needName){
   const iE = h('input',{type:'text', value:cfg.entrevistador, placeholder:'Nome do entrevistador'}),
@@ -410,7 +403,6 @@ function renderHome(){
         h('div',{class:'muted', style:'margin-top:6px'}, form.questions.length + ' perguntas no questionário')),
       h('button',{class:'pri big', onclick:startInterview},'Nova entrevista'),
       h('button',{class:'sec block', onclick:()=>exportXlsx(false)},'Exportar Excel'),
-      h('button',{class:'sec block', onclick:shareXlsx},'Enviar arquivo (WhatsApp, Bluetooth…)'),
       h('button',{class:'sec block', onclick:()=>settings(false)},'Configurações'),
       n ? h('button',{class:'sec block', onclick:closeSurvey},'Encerrar pesquisa (apagar entrevistas)')
         : h('div',null, h('button',{class:'sec block', onclick:()=>fin.click()},'Trocar questionário (Word)'), h('button',{class:'sec block', onclick:editText},'Editar questionário'), fin));
