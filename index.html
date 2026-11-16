@@ -1,0 +1,478 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="theme-color" content="#0b3d5c">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png">
+<title>Coleta de Pesquisa</title>
+<style>
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;height:100%}
+body{font-family:system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;background:#f3f5f7;color:#12202b;font-size:18px;line-height:1.35}
+#app{max-width:720px;margin:0 auto;min-height:100%;display:flex;flex-direction:column}
+header{background:#0b3d5c;color:#fff;padding:14px 16px;position:sticky;top:0;z-index:5}
+header h1{margin:0;font-size:19px;font-weight:600}
+header .sub{font-size:14px;opacity:.85;margin-top:2px;display:flex;justify-content:space-between;gap:8px}
+main{padding:16px;flex:1}
+footer.nav{position:sticky;bottom:0;background:#fff;border-top:1px solid #d5dbe1;padding:10px 16px;display:flex;gap:10px}
+button{font:inherit;border:0;border-radius:10px;padding:16px 18px;cursor:pointer;font-weight:600}
+button:disabled{opacity:.4}
+.pri{background:#0b6e4f;color:#fff}
+.sec{background:#e3e8ed;color:#12202b}
+.danger{background:#b3261e;color:#fff}
+.big{width:100%;font-size:21px;padding:22px}
+.block{width:100%;margin-top:12px}
+.card{background:#fff;border:1px solid #d5dbe1;border-radius:12px;padding:16px;margin-bottom:14px}
+.count{font-size:44px;font-weight:700;color:#0b3d5c;line-height:1}
+.muted{color:#55636f;font-size:15px}
+.q{font-size:22px;font-weight:600;margin:6px 0 16px}
+.opt{display:flex;align-items:center;gap:12px;width:100%;text-align:left;background:#fff;border:2px solid #c3ccd4;border-radius:12px;padding:16px;margin-bottom:10px;font-weight:500;font-size:19px;color:#12202b}
+.opt .mk{flex:0 0 26px;height:26px;border:2px solid #7b8a96;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:16px;color:#fff}
+.opt.multi .mk{border-radius:6px}
+.opt.on{border-color:#0b6e4f;background:#e4f4ee}
+.opt.on .mk{background:#0b6e4f;border-color:#0b6e4f}
+textarea,input[type=text],input[type=number]{font:inherit;width:100%;padding:14px;border:2px solid #c3ccd4;border-radius:10px;background:#fff}
+textarea{min-height:130px;resize:vertical}
+label{display:block;font-weight:600;margin:14px 0 6px;font-size:16px}
+.bar{height:6px;background:rgba(255,255,255,.3);border-radius:3px;margin-top:8px;overflow:hidden}
+.bar i{display:block;height:100%;background:#7fe0b8}
+.gps{font-size:13px;padding:2px 8px;border-radius:10px;background:rgba(255,255,255,.18);white-space:nowrap}
+.gps.ok{background:#1f8f66}
+.link{background:none;color:#fff;padding:4px 0;font-size:14px;font-weight:500;text-decoration:underline}
+.modal{position:fixed;inset:0;background:rgba(10,20,30,.55);display:flex;align-items:center;justify-content:center;padding:16px;z-index:20}
+.modal .box{background:#fff;border-radius:14px;padding:20px;max-width:560px;width:100%;max-height:88vh;overflow:auto}
+.modal h2{margin:0 0 10px;font-size:20px}
+.row{display:flex;gap:10px;margin-top:16px}
+.row button{flex:1}
+ol.prev{padding-left:22px;font-size:15px}
+ol.prev li{margin-bottom:6px}
+.tag{display:inline-block;font-size:12px;border-radius:8px;padding:1px 7px;background:#e3e8ed;margin-left:4px}
+.warn{background:#fff4d6;border:1px solid #e6c65c;border-radius:10px;padding:12px;font-size:15px;margin-bottom:14px}
+.toast{position:fixed;left:50%;bottom:90px;transform:translateX(-50%);background:#12202b;color:#fff;padding:12px 18px;border-radius:24px;font-size:15px;z-index:30;max-width:90%}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<script>
+'use strict';
+/* ================= Armazenamento ================= */
+const K = {cfg:'pq:cfg', form:'pq:form', seq:'pq:seq', draft:'pq:draft', i:'pq:i:'};
+const NR = 'Não respondeu';
+const lsGet = (k, d) => { try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } };
+const lsSet = (k, v) => { localStorage.setItem(k, JSON.stringify(v)); };
+let cfg = lsGet(K.cfg, null) || {entrevistador:'', aparelho:'', backupN:10, deviceId: Math.random().toString(36).slice(2,6).toUpperCase()};
+let form = lsGet(K.form, null);
+let draft = lsGet(K.draft, null);
+let view = 'home', pos = 0, gpsWatch = null;
+function saveCfg(){ lsSet(K.cfg, cfg); }
+function interviews(){
+  const out = [];
+  for (let n = 0; n < localStorage.length; n++) {
+    const k = localStorage.key(n);
+    if (k && k.indexOf(K.i) === 0) { const v = lsGet(k, null); if (v) out.push(v); }
+  }
+  return out.sort((a,b) => a.id - b.id);
+}
+function countInterviews(){ let c = 0; for (let n = 0; n < localStorage.length; n++) { const k = localStorage.key(n); if (k && k.indexOf(K.i) === 0) c++; } return c; }
+if (navigator.storage && navigator.storage.persist) { navigator.storage.persist().catch(()=>{}); }
+
+/* ================= Utilidades de tela ================= */
+const app = document.getElementById('app');
+function h(tag, attrs, ...kids){
+  const e = document.createElement(tag);
+  if (attrs) for (const a in attrs) {
+    if (a === 'class') e.className = attrs[a];
+    else if (a.slice(0,2) === 'on') e.addEventListener(a.slice(2), attrs[a]);
+    else if (a === 'disabled') e.disabled = !!attrs[a];
+    else if (a === 'value') e.value = attrs[a];
+    else e.setAttribute(a, attrs[a]);
+  }
+  for (const k of kids.flat()) if (k != null && k !== false) e.append(k.nodeType ? k : document.createTextNode(String(k)));
+  return e;
+}
+function toast(msg){ const t = h('div',{class:'toast'},msg); document.body.append(t); setTimeout(()=>t.remove(), 3500); }
+function modal(title, body, buttons){
+  const m = h('div',{class:'modal'});
+  const close = () => m.remove();
+  m.append(h('div',{class:'box'}, h('h2',null,title), body,
+    h('div',{class:'row'}, buttons.map(b => h('button',{class:b.cls||'sec', onclick:()=>{ if (b.fn && b.fn() === false) return; close(); }}, b.t)))));
+  document.body.append(m); return close;
+}
+const pad = n => String(n).padStart(2,'0');
+function fmtDate(ts){ const d = new Date(ts); return pad(d.getDate())+'/'+pad(d.getMonth()+1)+'/'+d.getFullYear()+' '+pad(d.getHours())+':'+pad(d.getMinutes()); }
+
+/* ================= Leitura do questionário ================= */
+const NA_RE = /^(n[ãa]o\s+(opinou|sabe|soube|respondeu|quis responder)|ns\s*\/\s*nr)\.?$/i;
+const NUMW = {duas:2,dois:2,'três':3,tres:3,quatro:4,cinco:5,seis:6};
+function parseLines(lines){
+  // lines: [{text, hint}]  hint: 'q' pergunta, 'o' alternativa, 'h' título de seção, null
+  const qRe = /^\s*(\d{1,3})\s*[.)\-–]\s*(\S.*)$/, oRe = /^\s*(?:[A-Za-z]\s*[.)]|[-•*▪◦☐○])\s*(\S.*)$/;
+  const f = {title:'', intro:'', questions:[]};
+  let cur = null; const pre = [];
+  for (const ln of lines) {
+    const t = (ln.text||'').replace(/\s+/g,' ').trim();
+    if (!t) continue;
+    const mq = qRe.exec(t);
+    if (mq || ln.hint === 'q') { cur = {n:f.questions.length+1, text: mq ? mq[2].trim() : t, options:[]}; f.questions.push(cur); continue; }
+    if (!cur) { pre.push(t); continue; }
+    if (ln.hint === 'h') continue;
+    const mo = oRe.exec(t);
+    cur.options.push(mo ? mo[1].trim() : t);
+  }
+  f.title = pre[0] || 'Questionário'; f.intro = pre.slice(1).join(' ');
+  for (const q of f.questions) {
+    if (!q.options.length) { q.type = 'open'; continue; }
+    if (q.options.every(o => NA_RE.test(o))) { q.type = 'open'; q.quick = q.options.slice(); continue; }
+    const m = /at[ée]\s+(\d+|duas|dois|tr[êe]s|quatro|cinco|seis)\b/i.exec(q.text);
+    if (m && /marque|escolha|cite|indique|selecione|assinale|aponte/i.test(q.text)) {
+      q.type = 'multi'; q.max = Math.min(q.options.length, parseInt(m[1],10) || NUMW[m[1].toLowerCase()] || 2);
+    } else if (/\(m[úu]ltipla\)|marque tod[oa]s|marque quant[oa]s/i.test(q.text)) {
+      q.type = 'multi'; q.max = q.options.length; q.text = q.text.replace(/\s*\(m[úu]ltipla\)/i,'');
+    } else q.type = 'single';
+    if (q.type === 'multi' && q.max < 2) q.type = 'single';
+  }
+  return f;
+}
+/* --- leitor mínimo de .docx (zip + xml), sem bibliotecas externas --- */
+async function unzip(buf, names){
+  const dv = new DataView(buf), u8 = new Uint8Array(buf); let e = buf.byteLength - 22;
+  while (e >= 0 && dv.getUint32(e, true) !== 0x06054b50) e--;
+  if (e < 0) throw new Error('Arquivo inválido (não é um .docx).');
+  const total = dv.getUint16(e+10, true); let p = dv.getUint32(e+16, true); const out = {};
+  const dec = new TextDecoder();
+  for (let n = 0; n < total; n++) {
+    const method = dv.getUint16(p+10, true), csize = dv.getUint32(p+20, true), nlen = dv.getUint16(p+28, true),
+          xlen = dv.getUint16(p+30, true), clen = dv.getUint16(p+32, true), off = dv.getUint32(p+42, true);
+    const name = dec.decode(u8.subarray(p+46, p+46+nlen));
+    if (names.indexOf(name) >= 0) {
+      const ds = off + 30 + dv.getUint16(off+26, true) + dv.getUint16(off+28, true);
+      const data = u8.subarray(ds, ds+csize);
+      if (method === 0) out[name] = dec.decode(data);
+      else {
+        if (typeof DecompressionStream === 'undefined') throw new Error('Navegador desatualizado: atualize o Chrome para importar arquivos do Word.');
+        const s = new Blob([data]).stream().pipeThrough(new DecompressionStream('deflate-raw'));
+        out[name] = await new Response(s).text();
+      }
+    }
+    p += 46 + nlen + xlen + clen;
+  }
+  return out;
+}
+async function parseDocx(buf){
+  const z = await unzip(buf, ['word/document.xml','word/numbering.xml']);
+  if (!z['word/document.xml']) throw new Error('Não encontrei o texto do documento.');
+  const xp = new DOMParser();
+  const first = (el, tag) => el.getElementsByTagName(tag)[0];
+  const fmt = {}; // numId -> {ilvl: numFmt}
+  if (z['word/numbering.xml']) {
+    const nd = xp.parseFromString(z['word/numbering.xml'], 'application/xml'), abs = {};
+    for (const a of nd.getElementsByTagName('w:abstractNum')) {
+      const m = {}; for (const l of a.getElementsByTagName('w:lvl')) { const nf = first(l,'w:numFmt'); m[l.getAttribute('w:ilvl')] = nf ? nf.getAttribute('w:val') : ''; }
+      abs[a.getAttribute('w:abstractNumId')] = m;
+    }
+    for (const nm of nd.getElementsByTagName('w:num')) { const a = first(nm,'w:abstractNumId'); if (a) fmt[nm.getAttribute('w:numId')] = abs[a.getAttribute('w:val')] || {}; }
+  }
+  const doc = xp.parseFromString(z['word/document.xml'], 'application/xml'), lines = [];
+  for (const p of doc.getElementsByTagName('w:p')) {
+    let text = '';
+    const walk = n => { for (const c of n.childNodes) { if (c.nodeName === 'w:t') text += c.textContent; else if (c.nodeName === 'w:tab' || c.nodeName === 'w:br') text += ' '; else if (c.nodeName !== 'w:pPr' && c.nodeName !== 'w:del') walk(c); } };
+    walk(p);
+    let hint = null; const ppr = first(p,'w:pPr');
+    if (ppr) {
+      const st = first(ppr,'w:pStyle'), np = first(ppr,'w:numPr');
+      if (st && /^(heading|t[ií]tulo|title)/i.test(st.getAttribute('w:val')||'')) hint = 'h';
+      if (np) {
+        const id = first(np,'w:numId'), lv = first(np,'w:ilvl');
+        const nf = id ? (fmt[id.getAttribute('w:val')] || {})[lv ? lv.getAttribute('w:val') : '0'] : '';
+        hint = (nf === 'decimal' || nf === 'decimalZero') ? 'q' : 'o';
+      }
+    }
+    lines.push({text, hint});
+  }
+  return parseLines(lines);
+}
+function formToText(f){
+  let s = f.title + '\n' + (f.intro ? f.intro + '\n' : '') + '\n';
+  for (const q of f.questions) { s += q.n + '. ' + q.text + '\n'; q.options.forEach((o,i) => { s += String.fromCharCode(65 + (i % 26)) + '. ' + o + '\n'; }); s += '\n'; }
+  return s;
+}
+function previewForm(f){
+  if (!f.questions.length) { modal('Nenhuma pergunta encontrada', h('p',null,'Cada pergunta deve começar com número e ponto (ex.: "1. Sexo") e as alternativas vêm nas linhas abaixo (ex.: "A. Masculino").'), [{t:'Fechar'}]); return; }
+  if (countInterviews() && form) { modal('Há entrevistas gravadas', h('p',null,'Para trocar o questionário, primeiro exporte o Excel e apague as entrevistas deste aparelho (Configurações → Encerrar pesquisa).'), [{t:'Entendi'}]); return; }
+  const c = {open:0, single:0, multi:0}; f.questions.forEach(q => c[q.type]++);
+  const lab = {open:'aberta', single:'escolha única'};
+  const body = h('div',null,
+    h('p',null, h('b',null,f.title)),
+    h('p',{class:'muted'}, f.questions.length + ' perguntas: ' + c.single + ' de escolha única, ' + c.multi + ' de múltipla escolha, ' + c.open + ' abertas. Confira antes de confirmar.'),
+    h('ol',{class:'prev'}, f.questions.map(q => h('li',null, q.text, h('span',{class:'tag'}, q.type === 'multi' ? 'até ' + q.max + ' de ' + q.options.length : lab[q.type] + (q.type === 'single' ? ' · ' + q.options.length + ' alternativas' : ''))))));
+  modal('Conferir questionário', body, [{t:'Cancelar'}, {t:'Usar este questionário', cls:'pri', fn:()=>{ form = f; lsSet(K.form, f); localStorage.removeItem(K.draft); draft = null; view = 'home'; render(); toast('Questionário carregado.'); }}]);
+}
+
+/* ================= GPS ================= */
+function gpsStart(){
+  gpsStop();
+  if (!navigator.geolocation) return;
+  try {
+    gpsWatch = navigator.geolocation.watchPosition(p => {
+      if (!draft) return;
+      const c = p.coords;
+      if (!draft.gps || c.accuracy <= draft.gps.acc) { draft.gps = {lat:c.latitude, lon:c.longitude, acc:Math.round(c.accuracy), t:p.timestamp || Date.now()}; lsSet(K.draft, draft); gpsBadge(); }
+    }, () => {}, {enableHighAccuracy:true, maximumAge:0, timeout:600000});
+  } catch (e) {}
+}
+function gpsStop(){ if (gpsWatch != null && navigator.geolocation) navigator.geolocation.clearWatch(gpsWatch); gpsWatch = null; }
+function gpsBadge(){ const b = document.getElementById('gps'); if (!b || !draft) return; if (draft.gps) { b.textContent = 'GPS ±' + draft.gps.acc + ' m'; b.className = 'gps ok'; } else { b.textContent = 'GPS buscando…'; b.className = 'gps'; } }
+
+/* ================= Entrevista ================= */
+function startInterview(){
+  if (!form) return;
+  if (!cfg.entrevistador.trim()) { settings(true); return; }
+  draft = {ini: Date.now(), r: form.questions.map(() => null), pos:0, gps:null};
+  lsSet(K.draft, draft); pos = 0; view = 'q'; gpsStart(); render();
+}
+function answered(q, v){ return q.type === 'multi' ? Array.isArray(v) && v.length > 0 : typeof v === 'string' && v.trim() !== ''; }
+function go(d){
+  const np = pos + d;
+  if (np < 0) return;
+  if (d > 0 && !answered(form.questions[pos], draft.r[pos])) return;
+  if (np >= form.questions.length) view = 'end'; else { pos = np; view = 'q'; }
+  draft.pos = pos; lsSet(K.draft, draft); render(); window.scrollTo(0,0);
+}
+function finish(){
+  const seq = (lsGet(K.seq, 0) || 0) + 1;
+  const it = {id:seq, uid: cfg.deviceId + '-' + draft.ini.toString(36).toUpperCase() + '-' + seq, ini:draft.ini, fim:Date.now(), gps:draft.gps,
+              ent:cfg.entrevistador.trim(), apa:cfg.aparelho.trim(), r:draft.r};
+  lsSet(K.i + seq, it); lsSet(K.seq, seq);
+  localStorage.removeItem(K.draft); draft = null; gpsStop();
+  const total = countInterviews(), n = parseInt(cfg.backupN, 10) || 0;
+  view = 'saved'; render();
+  if (n > 0 && total % n === 0) { exportXlsx(true); toast('Cópia de segurança gerada (' + total + ' entrevistas).'); }
+}
+function cancelInterview(){
+  modal('Cancelar esta entrevista?', h('p',null,'As respostas desta entrevista serão descartadas. As entrevistas já salvas não são afetadas.'),
+    [{t:'Continuar entrevista'}, {t:'Descartar', cls:'danger', fn:()=>{ localStorage.removeItem(K.draft); draft = null; gpsStop(); view = 'home'; render(); }}]);
+}
+
+/* ================= Excel (.xlsx gerado no próprio aparelho) ================= */
+const CRC = (() => { const t = new Uint32Array(256); for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1; t[n] = c >>> 0; } return t; })();
+function crc32(u){ let c = 0xFFFFFFFF; for (let i = 0; i < u.length; i++) c = CRC[(c ^ u[i]) & 0xFF] ^ (c >>> 8); return (c ^ 0xFFFFFFFF) >>> 0; }
+function zipStore(files){
+  const enc = new TextEncoder(), parts = [], cen = []; let off = 0;
+  for (const f of files) {
+    const name = enc.encode(f.name), data = enc.encode(f.data), crc = crc32(data);
+    const lh = new DataView(new ArrayBuffer(30));
+    lh.setUint32(0,0x04034b50,true); lh.setUint16(4,20,true); lh.setUint16(6,0x0800,true); lh.setUint16(8,0,true); lh.setUint16(10,0,true); lh.setUint16(12,0x21,true);
+    lh.setUint32(14,crc,true); lh.setUint32(18,data.length,true); lh.setUint32(22,data.length,true); lh.setUint16(26,name.length,true); lh.setUint16(28,0,true);
+    parts.push(lh.buffer, name, data);
+    const ch = new DataView(new ArrayBuffer(46));
+    ch.setUint32(0,0x02014b50,true); ch.setUint16(4,20,true); ch.setUint16(6,20,true); ch.setUint16(8,0x0800,true); ch.setUint16(10,0,true); ch.setUint16(12,0,true); ch.setUint16(14,0x21,true);
+    ch.setUint32(16,crc,true); ch.setUint32(20,data.length,true); ch.setUint32(24,data.length,true); ch.setUint16(28,name.length,true); ch.setUint32(42,off,true);
+    cen.push(ch.buffer, name); off += 30 + name.length + data.length;
+  }
+  let csize = 0; cen.forEach(c => csize += c.byteLength);
+  const e = new DataView(new ArrayBuffer(22));
+  e.setUint32(0,0x06054b50,true); e.setUint16(8,files.length,true); e.setUint16(10,files.length,true); e.setUint32(12,csize,true); e.setUint32(16,off,true);
+  return new Blob([...parts, ...cen, e.buffer], {type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+}
+const xesc = s => String(s).replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g,'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+function colName(n){ let s = ''; n++; while (n > 0) { const m = (n - 1) % 26; s = String.fromCharCode(65 + m) + s; n = (n - m - 1) / 26; } return s; }
+const serial = ts => (ts - new Date(ts).getTimezoneOffset() * 60000) / 86400000 + 25569;
+function buildRows(){
+  const head = ['ID','Código da entrevista','Entrevistador','Aparelho','Início','Conclusão','Duração (min)','Latitude','Longitude','Precisão GPS (m)','Mapa'];
+  for (const q of form.questions) {
+    if (q.type === 'multi') for (let k = 1; k <= q.max; k++) head.push(q.n + '. ' + q.text + ' [resposta ' + k + ']');
+    else head.push(q.n + '. ' + q.text);
+  }
+  const rows = interviews().map(it => {
+    const g = it.gps;
+    const r = [{n:it.id}, it.uid, it.ent, it.apa, {d:serial(it.ini)}, {d:serial(it.fim)}, {n:Math.round((it.fim - it.ini) / 6000) / 10},
+      g ? {n:g.lat} : 'sem posição', g ? {n:g.lon} : 'sem posição', g ? {n:g.acc} : '', g ? {link:'https://www.google.com/maps?q=' + g.lat + ',' + g.lon} : ''];
+    form.questions.forEach((q, i) => {
+      const v = it.r[i];
+      if (q.type === 'multi') for (let k = 0; k < q.max; k++) r.push((v && v[k]) || '');
+      else r.push(v == null ? '' : v);
+    });
+    return r;
+  });
+  return {head, rows};
+}
+function sheetXml(head, rows){
+  const cell = (v, c, r) => {
+    const ref = colName(c) + r;
+    if (v === '' || v == null) return '';
+    if (typeof v === 'object') {
+      if ('n' in v) return '<c r="' + ref + '"><v>' + v.n + '</v></c>';
+      if ('d' in v) return '<c r="' + ref + '" s="2"><v>' + v.d + '</v></c>';
+      if ('link' in v) return '<c r="' + ref + '" t="str"><f>HYPERLINK("' + xesc(v.link) + '","abrir mapa")</f><v>abrir mapa</v></c>';
+    }
+    return '<c r="' + ref + '" t="inlineStr"><is><t xml:space="preserve">' + xesc(v) + '</t></is></c>';
+  };
+  let x = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetViews><sheetView workbookViewId="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews><cols>';
+  head.forEach((t, i) => { const w = i < 11 ? [6,22,20,14,19,19,12,12,12,12,13][i] : 24; x += '<col min="' + (i+1) + '" max="' + (i+1) + '" width="' + w + '" customWidth="1"/>'; });
+  x += '</cols><sheetData><row r="1">' + head.map((t, i) => '<c r="' + colName(i) + '1" t="inlineStr" s="1"><is><t xml:space="preserve">' + xesc(t) + '</t></is></c>').join('') + '</row>';
+  rows.forEach((r, ri) => { x += '<row r="' + (ri + 2) + '">' + r.map((v, ci) => cell(v, ci, ri + 2)).join('') + '</row>'; });
+  return x + '</sheetData></worksheet>';
+}
+function makeXlsx(){
+  const {head, rows} = buildRows(), X = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
+  return zipStore([
+    {name:'[Content_Types].xml', data:X + '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/></Types>'},
+    {name:'_rels/.rels', data:X + '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>'},
+    {name:'xl/workbook.xml', data:X + '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="Entrevistas" sheetId="1" r:id="rId1"/></sheets></workbook>'},
+    {name:'xl/_rels/workbook.xml.rels', data:X + '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>'},
+    {name:'xl/styles.xml', data:X + '<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><numFmts count="1"><numFmt numFmtId="164" formatCode="dd/mm/yyyy\\ hh:mm:ss"/></numFmts><fonts count="2"><font><sz val="11"/><name val="Calibri"/></font><font><b/><sz val="11"/><name val="Calibri"/></font></fonts><fills count="2"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill></fills><borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="3"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/><xf numFmtId="0" fontId="1" fillId="0" borderId="0" xfId="0" applyFont="1" applyAlignment="1"><alignment wrapText="1" vertical="top"/></xf><xf numFmtId="164" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/></cellXfs></styleSheet>'},
+    {name:'xl/worksheets/sheet1.xml', data:sheetXml(head, rows)}
+  ]);
+}
+function fileName(){
+  const d = new Date(), slug = (cfg.entrevistador || 'aparelho').normalize('NFD').replace(/[^\w ]/g,'').trim().replace(/\s+/g,'-').toLowerCase() || 'aparelho';
+  return 'pesquisa_' + slug + '_' + countInterviews() + '-entrevistas_' + d.getFullYear() + pad(d.getMonth()+1) + pad(d.getDate()) + '-' + pad(d.getHours()) + pad(d.getMinutes()) + '.xlsx';
+}
+function exportXlsx(auto){
+  if (!form || !countInterviews()) { if (!auto) toast('Ainda não há entrevistas para exportar.'); return; }
+  const url = URL.createObjectURL(makeXlsx()), a = h('a',{href:url, download:fileName()});
+  document.body.append(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 60000);
+  if (!auto) toast('Arquivo Excel salvo na pasta de downloads.');
+}
+async function shareXlsx(){
+  if (!form || !countInterviews()) { toast('Ainda não há entrevistas para enviar.'); return; }
+  const f = new File([makeXlsx()], fileName(), {type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+  if (navigator.canShare && navigator.canShare({files:[f]})) { try { await navigator.share({files:[f], title:'Entrevistas'}); } catch (e) {} }
+  else { toast('Este navegador não compartilha arquivos; use Exportar Excel.'); }
+}
+
+/* ================= Configurações ================= */
+function settings(needName){
+  const iE = h('input',{type:'text', value:cfg.entrevistador, placeholder:'Nome do entrevistador'}),
+        iA = h('input',{type:'text', value:cfg.aparelho, placeholder:'Ex.: Aparelho 03'}),
+        iN = h('input',{type:'number', min:'0', value:cfg.backupN, inputmode:'numeric'});
+  const body = h('div',null,
+    needName ? h('div',{class:'warn'},'Informe o nome do entrevistador antes de começar.') : null,
+    h('label',null,'Entrevistador'), iE, h('label',null,'Identificação do aparelho'), iA,
+    h('label',null,'Gerar cópia de segurança (Excel) a cada quantas entrevistas?'), iN,
+    h('div',{class:'muted'},'Use 0 para desligar. O arquivo vai para a pasta de downloads e sempre contém todas as entrevistas feitas até o momento.'));
+  modal('Configurações', body, [{t:'Fechar'}, {t:'Salvar', cls:'pri', fn:()=>{
+    if (!iE.value.trim()) { toast('Informe o nome do entrevistador.'); return false; }
+    cfg.entrevistador = iE.value.trim(); cfg.aparelho = iA.value.trim(); cfg.backupN = Math.max(0, parseInt(iN.value, 10) || 0); saveCfg(); render();
+  }}]);
+}
+function importFile(ev){
+  const f = ev.target.files[0]; ev.target.value = ''; if (!f) return;
+  const r = new FileReader();
+  r.onload = async () => {
+    try {
+      const parsed = /\.docx$/i.test(f.name) ? await parseDocx(r.result) : parseLines(new TextDecoder().decode(r.result).split(/\r?\n/).map(t => ({text:t})));
+      previewForm(parsed);
+    } catch (e) { modal('Não consegui ler o arquivo', h('p',null,String(e.message || e)), [{t:'Fechar'}]); }
+  };
+  r.readAsArrayBuffer(f);
+}
+function editText(){
+  const ta = h('textarea',{style:'min-height:50vh;font-size:15px'}); ta.value = form ? formToText(form) : 'Título da pesquisa\n\n1. Sexo\nA. Masculino\nB. Feminino\n\n2. Qual o principal problema do seu bairro?\n';
+  modal('Editar questionário', h('div',null, h('p',{class:'muted'},'Pergunta: número e ponto. Alternativas: uma por linha, abaixo da pergunta. Sem alternativas = resposta aberta. "Marque até 3" = múltipla escolha.'), ta),
+    [{t:'Cancelar'}, {t:'Conferir', cls:'pri', fn:()=>{ previewForm(parseLines(ta.value.split('\n').map(t => ({text:t})))); }}]);
+}
+function closeSurvey(){
+  const n = countInterviews(), inp = h('input',{type:'text', placeholder:'Digite APAGAR'});
+  modal('Encerrar pesquisa', h('div',null,
+    h('p',null,'Isto apaga as ' + n + ' entrevistas deste aparelho e libera a troca de questionário. Um arquivo Excel final será gerado antes de apagar.'),
+    h('p',null, h('b',null,'Confira se o arquivo foi salvo antes de continuar.')), inp),
+    [{t:'Cancelar'}, {t:'Exportar e apagar', cls:'danger', fn:()=>{
+      if (inp.value.trim().toUpperCase() !== 'APAGAR') { toast('Digite APAGAR para confirmar.'); return false; }
+      exportXlsx(true);
+      const ks = []; for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); if (k.indexOf(K.i) === 0) ks.push(k); }
+      ks.forEach(k => localStorage.removeItem(k)); localStorage.removeItem(K.seq); localStorage.removeItem(K.draft); draft = null; render(); toast('Entrevistas apagadas.');
+    }}]);
+}
+
+/* ================= Telas ================= */
+function render(){
+  app.textContent = '';
+  if (view === 'q' && draft && form) return renderQ();
+  if (view === 'end' && draft && form) return renderEnd();
+  if (view === 'saved') return renderSaved();
+  renderHome();
+}
+function renderHome(){
+  const n = countInterviews(), fin = h('input',{type:'file', accept:'.docx,.txt', style:'display:none', onchange:importFile});
+  app.append(h('header',null, h('h1',null, form ? form.title : 'Coleta de Pesquisa'),
+    h('div',{class:'sub'}, h('span',null, cfg.entrevistador ? 'Entrevistador: ' + cfg.entrevistador + (cfg.aparelho ? ' · ' + cfg.aparelho : '') : 'Entrevistador não informado'))));
+  const m = h('main');
+  if (!form) {
+    m.append(h('div',{class:'card'}, h('p',null,'Nenhum questionário carregado neste aparelho.'), h('p',{class:'muted'},'Importe o arquivo do Word (.docx) com as perguntas numeradas e as alternativas abaixo de cada uma.')),
+      h('button',{class:'pri big', onclick:()=>fin.click()},'Importar questionário (Word)'),
+      h('button',{class:'sec block', onclick:editText},'Digitar ou colar o questionário'), fin,
+      h('button',{class:'sec block', onclick:()=>settings(false)},'Configurações'));
+  } else {
+    m.append(h('div',{class:'card'}, h('div',{class:'count'}, n), h('div',{class:'muted'}, n === 1 ? 'entrevista salva neste aparelho' : 'entrevistas salvas neste aparelho'),
+        h('div',{class:'muted', style:'margin-top:6px'}, form.questions.length + ' perguntas no questionário')),
+      h('button',{class:'pri big', onclick:startInterview},'Nova entrevista'),
+      h('button',{class:'sec block', onclick:()=>exportXlsx(false)},'Exportar Excel'),
+      h('button',{class:'sec block', onclick:shareXlsx},'Enviar arquivo (WhatsApp, Bluetooth…)'),
+      h('button',{class:'sec block', onclick:()=>settings(false)},'Configurações'),
+      n ? h('button',{class:'sec block', onclick:closeSurvey},'Encerrar pesquisa (apagar entrevistas)')
+        : h('div',null, h('button',{class:'sec block', onclick:()=>fin.click()},'Trocar questionário (Word)'), h('button',{class:'sec block', onclick:editText},'Editar questionário'), fin));
+  }
+  app.append(m);
+}
+function qHeader(label, pct){
+  return h('header',null, h('h1',null,label),
+    h('div',{class:'sub'}, h('button',{class:'link', onclick:cancelInterview},'Cancelar entrevista'), h('span',{id:'gps', class:'gps'},'')),
+    h('div',{class:'bar'}, h('i',{style:'width:' + pct + '%'})));
+}
+function renderQ(){
+  const q = form.questions[pos], total = form.questions.length, m = h('main');
+  app.append(qHeader('Pergunta ' + (pos + 1) + ' de ' + total, Math.round(pos / total * 100)));
+  m.append(h('div',{class:'q'}, q.text));
+  const next = h('button',{class:'pri', style:'flex:2', onclick:()=>go(1)}, pos === total - 1 ? 'Concluir' : 'Avançar');
+  const upd = () => { next.disabled = !answered(q, draft.r[pos]); };
+  const save = () => { lsSet(K.draft, draft); upd(); };
+  if (q.type === 'single') {
+    q.options.forEach(o => { const b = h('button',{class:'opt' + (draft.r[pos] === o ? ' on' : ''), onclick:()=>{ draft.r[pos] = o; save(); m.querySelectorAll('.opt').forEach(x => x.classList.toggle('on', x === b)); setTimeout(()=>go(1), 180); }}, h('span',{class:'mk'},'✓'), h('span',null,o)); m.append(b); });
+  } else if (q.type === 'multi') {
+    const info = h('div',{class:'muted', style:'margin-bottom:10px'});
+    const cur = () => (Array.isArray(draft.r[pos]) ? draft.r[pos] : []);
+    const setInfo = () => { info.textContent = 'Marque até ' + q.max + ' · ' + cur().length + ' marcada(s)'; };
+    m.append(info);
+    q.options.forEach(o => { const b = h('button',{class:'opt multi' + (cur().indexOf(o) >= 0 ? ' on' : ''), onclick:()=>{
+        let v = cur().slice(); const i = v.indexOf(o);
+        if (i >= 0) v.splice(i, 1); else { if (v.length >= q.max) { toast('Limite de ' + q.max + ' respostas. Desmarque uma para trocar.'); return; } v.push(o); }
+        draft.r[pos] = v; b.classList.toggle('on', i < 0); save(); setInfo();
+      }}, h('span',{class:'mk'},'✓'), h('span',null,o)); m.append(b); });
+    setInfo();
+  } else {
+    const ta = h('textarea',{placeholder:'Digite a resposta', oninput:()=>{ draft.r[pos] = ta.value; save(); }});
+    ta.value = draft.r[pos] || '';
+    m.append(ta, ...(q.quick || [NR]).map(lb => h('button',{class:'sec block', onclick:()=>{ draft.r[pos] = lb; save(); go(1); }}, lb)));
+  }
+  app.append(m, h('footer',{class:'nav'}, h('button',{class:'sec', style:'flex:1', disabled:pos === 0, onclick:()=>go(-1)},'Voltar'), next));
+  upd(); gpsBadge();
+}
+function renderEnd(){
+  app.append(qHeader('Fim do questionário', 100));
+  const g = draft.gps;
+  app.append(h('main',null,
+    h('div',{class:'card'}, h('p',null, h('b',null,'Todas as ' + form.questions.length + ' perguntas foram respondidas.')),
+      h('p',{class:'muted'}, g ? 'Localização registrada (precisão de ' + g.acc + ' m).' : 'Localização ainda não obtida. Se puder, aguarde alguns segundos em local aberto antes de salvar.')),
+    h('button',{class:'pri big', onclick:finish},'Salvar entrevista'),
+    h('button',{class:'sec block', onclick:()=>{ view = 'q'; render(); }},'Voltar e revisar respostas')));
+  gpsBadge();
+}
+function renderSaved(){
+  const n = countInterviews();
+  app.append(h('header',null, h('h1',null, form.title)), h('main',null,
+    h('div',{class:'card'}, h('div',{class:'count'}, '✓ ' + n), h('div',{class:'muted'}, 'Entrevista salva. Total neste aparelho: ' + n + '.')),
+    h('button',{class:'pri big', onclick:startInterview},'Nova entrevista'),
+    h('button',{class:'sec block', onclick:()=>{ view = 'home'; render(); }},'Tela inicial')));
+}
+
+/* ================= Início ================= */
+if (draft && form && Array.isArray(draft.r) && draft.r.length === form.questions.length) { pos = Math.min(draft.pos || 0, form.questions.length - 1); view = 'q'; gpsStart(); }
+else { draft = null; }
+render();
+if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) { navigator.serviceWorker.register('sw.js').catch(()=>{}); }
+</script>
+</body>
+</html>
